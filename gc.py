@@ -23,10 +23,11 @@ Xy              = 0                 # y方向运动数据
 
 x_date          = 0
 y_date          = 0
-
+last_x_date     = None
+last_y_date     = None
+car_is_moving   = False
 
 uart = UART(3, 115200, timeout_char=200)
-
 
 led_red     = LED(1)
 led_green   = LED(2)
@@ -42,8 +43,9 @@ def main():
     while(True):
         color_track()
         check_position(x_date, y_date)
-        # print(f"catch_flag: {catch_flag}, x_date: {x_date}, y_date: {y_date}")
-        print(f"catch_flag: {catch_flag}, Xx: {Xx}, Xy: {Xy}")  # 输出: catch_flag,Xx,Xy
+        print(f"catch_flag: {catch_flag}, x_date: {x_date}, y_date: {y_date}")
+        # print(f"catch_flag: {catch_flag}, Xx: {Xx}, Xy: {Xy}")  # 输出: catch_flag,Xx,Xy
+        uasrt_translate_five_uchar(catch_flag,control_flag,Xx,Xy,0)
         #translate_date()
 
     return
@@ -51,6 +53,10 @@ def main():
 
 def color_track():                      #颜色追踪
     global color,x_date,y_date
+    x_date  = None
+    y_date  = None
+    color   = 0
+
     img = sensor.snapshot()             # 捕获一帧图像
     for blob in img.find_blobs(
         thresholds,                     #追踪全部颜色
@@ -61,7 +67,8 @@ def color_track():                      #颜色追踪
     ):
         img.draw_rectangle(blob.rect())  # 绘制色块的矩形框
         img.draw_cross(blob.cx(), blob.cy())  # 绘制色块中心的十字线标记
-        #print(blob.code(),blob.cx(),blob.cy())
+
+        # 更新为检测到的色块数据
         color   = color_judge(blob.code())
         x_date  = blob.cx()
         y_date  = blob.cy()
@@ -98,11 +105,17 @@ def uasrt_translate_five_uchar(c1,c2,c3,c4,c5):         #发送五个无符号�
                    0x5B
                    )
     uart.write(data);                       #uart.write(data) 将打包好的二进制数据帧写入 UART 发送缓冲区，从而将数据通过串口发送出去
-    print(data)                             #通过 print(data) 打印发送的数据到串行终端，方便调试和确认发送的内容。
+    # print(data)                             #通过 print(data) 打印发送的数据到串行终端，方便调试和确认发送的内容。
 
 
 def check_position(x, y):
     global catch_flag,Xx,Xy                 # 声明需要修改的全局变量
+
+    if x is None or y is None:              # 如果未检测到物料，重置状态
+        catch_flag = 0
+        Xx = 0
+        Xy = 0
+        return
 
     if 140 <= x <= 180 and 100 <= y <= 120: # 检查是否在中心区域
         catch_flag      = 1
@@ -127,6 +140,24 @@ def check_position(x, y):
         Xy              = -1
 
     return
+
+
+# 判断转盘是否转动
+def is_turning(x, y):
+    global last_x_date, last_y_date
+    if x is None or y is None:  # 当前帧没有物料
+        return False
+    if last_x_date is None or last_y_date is None:  # 初始情况，无法判断
+        return False
+    # 计算位置变化
+    dx = abs(x - last_x_date)
+    dy = abs(y - last_y_date)
+    # 设定阈值，例如2像素（可调整）
+    threshold = 20
+    if dx > threshold or dy > threshold:
+        return True  # 转盘在转动
+    return False  # 转盘静止
+
 
 
 def color_judge(mycolor):
