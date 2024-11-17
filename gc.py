@@ -1,9 +1,6 @@
 # Untitled - By: lixian - Tue Nov 12 2024
 
 import sensor       # 导入 OpenMV 摄像头模块
-import time         # 导入时间模块
-import math         # 导入数学模块，用于角度转换等
-import image
 import ustruct
 from pyb import UART
 from pyb import LED
@@ -18,10 +15,14 @@ thresholds = [
     (50, 85, 11, -39, -66, -15),    # 蓝色的阈值范围
 ]                                   # 阈值列表，用于色块跟踪的颜色设定
 
-color           = 0
-center_point    = 0
-Xx              = 0
-Xy              = 0
+color           = 0                 # 识别到的颜色
+catch_flag      = 0                 # 抓取标志位
+control_flag    = 0                 # 小车控制标志位
+Xx              = 0                 # x方向运动数据
+Xy              = 0                 # y方向运动数据
+
+x_date          = 0
+y_date          = 0
 
 
 uart = UART(3, 115200, timeout_char=200)
@@ -40,14 +41,16 @@ def main():
     led_init()
     while(True):
         color_track()
-        translate_date()
+        check_position(x_date, y_date)
+        # print(f"catch_flag: {catch_flag}, x_date: {x_date}, y_date: {y_date}")
+        print(f"catch_flag: {catch_flag}, Xx: {Xx}, Xy: {Xy}")  # 输出: catch_flag,Xx,Xy
+        #translate_date()
 
-        #print(color)
     return
 
 
 def color_track():                      #颜色追踪
-    global color,Xx,Xy
+    global color,x_date,y_date
     img = sensor.snapshot()             # 捕获一帧图像
     for blob in img.find_blobs(
         thresholds,                     #追踪全部颜色
@@ -59,16 +62,16 @@ def color_track():                      #颜色追踪
         img.draw_rectangle(blob.rect())  # 绘制色块的矩形框
         img.draw_cross(blob.cx(), blob.cy())  # 绘制色块中心的十字线标记
         #print(blob.code(),blob.cx(),blob.cy())
-        color = color_judge(blob.code())
-        Xx    = blob.cx()
-        Xy    = blob.cy()
+        color   = color_judge(blob.code())
+        x_date  = blob.cx()
+        y_date  = blob.cy()
         #print(color)
 
 
-def translate_date():
-    c1 = color
-    c2 = check_position(Xx, Xy)
-    uasrt_translate_five_uchar(c1,c2,0,0,0)
+#def translate_date():
+#    c1 = color
+#    c2 = check_position(Xx, Xy)
+#    uasrt_translate_five_uchar(c1,c2,0,0,0)
 
 
 
@@ -99,21 +102,30 @@ def uasrt_translate_five_uchar(c1,c2,c3,c4,c5):         #发送五个无符号�
 
 
 def check_position(x, y):
-    global center_point,Xx,Xy
-    if 0 <= x <= 400 and 0 <= y <= 320:  # 检查输入是否在合法范围内
-        if 180 <= x <= 220 and 140 <= y <= 180:
-            center_point    = 1
-            Xx              = 0
-            Xy              = 0
-            return
-        elif x <= 180 or x >= 220:
-            center_point    = 0
-            Xx = (x-200)/10
-        elif y <= 140 or y >= 180:
-            center_point    = 0
-            Xy = (y-160)/10
-        else:
-            center_point    = 0
+    global catch_flag,Xx,Xy                 # 声明需要修改的全局变量
+
+    if 140 <= x <= 180 and 100 <= y <= 120: # 检查是否在中心区域
+        catch_flag      = 1
+        Xx              = 0
+        Xy              = 0
+        return
+
+    catch_flag      = 0                     # 不在中心区域时重置抓取标志位
+
+    if 140 <= x <= 180:                     # 判断 x 方向
+        Xx              = 0
+    elif x < 140:
+        Xx              = -1
+    elif x > 180:
+        Xx              = 1
+
+    if 100 <= y <= 120:                     # 判断 y 方向
+        Xy              = 0
+    elif y < 100:
+        Xy              = 1
+    elif y > 120:
+        Xy              = -1
+
     return
 
 
